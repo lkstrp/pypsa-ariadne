@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: CC0-1.0
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
+
+# Git diff check
 run:
   prefix: 20240801offwindconnectioncosts
   name:
