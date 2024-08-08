@@ -23,6 +23,8 @@ jobs:
         pre_command: "build_scenarios -f"
         main_command: "ariadne_all"
         dev: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   upload-artifacts:
     name: Upload artifacts
