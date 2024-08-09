@@ -30,19 +30,28 @@ jobs:
     name: Upload artifacts
     needs: run-validation
     runs-on: self-hosted
-    strategy:
-      matrix:
-        include:
-        - {artifact_name: "results (feature branch)", path: "~/${{ github.repository }}/feature/results"}
-        - {artifact_name: "results (base branch)", path: "~/${{ github.repository }}/main/results"}
-        - {artifact_name: "validator-metadata", path: "~/${{ github.repository }}/validator-metadata.yml"}
     steps:
-    - name: Upload artifacts - ${{ matrix.artifact_name }}
-      uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact_name }}
+        name: logs
         path: |
-          ${{ matrix.path }}
+          ~/${{ github.repository }}/validator-metadata.yml
+          ~/${{ github.repository }}/main/logs/
+          ~/${{ github.repository }}/feature/logs/
+        if-no-files-found: error
+        retention-days: 90
+    - uses: actions/upload-artifact@v4
+      with:
+        name: results (main branch)
+        path: |
+          ~/${{ github.repository }}/main/results
+        if-no-files-found: error
+        retention-days: 90
+    - uses: actions/upload-artifact@v4
+      with:
+        name: results (feature branch)
+        path: |
+          ~/${{ github.repository }}/feature/results
         if-no-files-found: error
         retention-days: 90
 
