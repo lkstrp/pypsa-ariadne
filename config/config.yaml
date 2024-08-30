@@ -331,6 +331,7 @@ solving:
     skip_iterations: true # settings for post-discretization: false
     min_iterations: 1 # settings for post-discretization: 1
     max_iterations: 1 # settings for post-discretization: 1
+    seed: 123
     post_discretization:
       enable: false
       line_unit_size: 1700
