@@ -44,6 +44,7 @@ jobs:
           ~/${{ github.repository }}/feature/.snakemake/
         if-no-files-found: error
         retention-days: 90
+        include-hidden-files: true
     - uses: actions/upload-artifact@v4
       with:
         name: results (main branch)
@@ -51,6 +52,7 @@ jobs:
           ~/${{ github.repository }}/main/results
         if-no-files-found: error
         retention-days: 90
+        include-hidden-files: true
     - uses: actions/upload-artifact@v4
       with:
         name: results (feature branch)
@@ -58,6 +60,7 @@ jobs:
           ~/${{ github.repository }}/feature/results
         if-no-files-found: error
         retention-days: 90
+        include-hidden-files: true
 
   comment-on-pr:
     name: Comment on pull request
