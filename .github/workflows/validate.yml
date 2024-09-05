@@ -37,9 +37,9 @@ jobs:
       with:
         step: create-comment
         snakemake_config: config/config.yaml
-          # The path starting from prefix in config
-          # For plot results/<prefix>/<scenario>/<plot_name>.png pass
-          # <scenario>/<plot_name>.png
+        # The path starting from prefix in config
+        # For plot results/<prefix>/<scenario>/<plot_name>.png pass
+        # <scenario>/<plot_name>.png
         plots: >
           "
           KN2045_Bal_v4/ariadne/primary_energy.png
