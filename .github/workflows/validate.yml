@@ -28,7 +28,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   create-report:
-    name: Create Validator report
+    name: Create report
     if: github.event.pull_request.head.repo.full_name == github.repository
     needs: run-validation
     runs-on: ubuntu-latest
