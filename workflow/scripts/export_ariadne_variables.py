@@ -176,14 +176,17 @@ def _get_gas_fractions(n, region):
     # can deviate. I don't know why exactly, but at least we can check that
     # the difference stays roughly the same after the calculation.
     assert isclose(
-        domestic_gas_supply.get("renewable gas", 0) 
-            - renewable_gas_balance.sum(),   
-        total_gas_supply.get([
-                "DE renewable gas -> DE gas",
-                "DE renewable gas -> EU gas"
-            ]).sum()
-            - renewable_gas_supply.get("DE renewable gas").sum()
-        )
+        domestic_gas_supply.get("renewable gas", 0) - renewable_gas_balance.sum(),
+        total_gas_supply.get(
+            ["DE renewable gas -> DE gas"],
+            pd.Series(0)).sum() 
+        + total_gas_supply.get(
+            ["DE renewable gas -> EU gas"],
+            pd.Series(0)
+        ).sum()
+        - renewable_gas_supply.get("DE renewable gas", pd.Series(0)).sum(),
+        rtol=1e-3,
+    )
 
     gas_fractions = pd.Series(
         {
@@ -1598,7 +1601,7 @@ def get_secondary_energy(n, region, _industry_demand):
         hydrogen_production[
             ~hydrogen_production.index.str.startswith("H2 pipeline")
         ].sum(),
-        rtol = 0.01
+        rtol=0.01,
     )
 
     oil_fossil_fraction = _get_oil_fossil_fraction(n, region)
@@ -2512,7 +2515,9 @@ def get_emissions(n, region, _energy_totals):
         print("WARNING! Not all CO2 capture from fossil sources is captured!!!")
         print("total_ccs - fossil_cc: ", total_ccs - fossil_cc.sum())
         # TODO what to do with fossil_cc_emissions???
-        if (n.links.build_year.max() == 2045) and (total_ccs - fossil_cc.sum() > 1): # > 1 for numerical errors
+        if (n.links.build_year.max() == 2045) and (
+            total_ccs - fossil_cc.sum() > 1
+        ):  # > 1 for numerical errors
             raise Exception("Not enough CCS in 2045!")
 
     if not co2_atmosphere_withdrawal.get("urban central solid biomass CHP CC"):
@@ -2990,11 +2995,16 @@ def get_prices(n, region):
         "groupby": n.statistics.groupers.get_name_bus_and_carrier,
         "nice_names": False,
     }
+    try: 
+        co2_limit_de = n.global_constraints.loc["co2_limit-DE", "mu"]
+    except KeyError:
+        co2_limit_de = 0
+
 
     # co2 additions
     co2_price = (
         -n.global_constraints.loc["CO2Limit", "mu"]
-        - n.global_constraints.loc["co2_limit-DE", "mu"]
+        - co2_limit_de
     )
     # specific emissions in tons CO2/MWh according to n.links[n.links.carrier =="your_carrier].efficiency2.unique().item()
     specific_emisisons = {
@@ -3513,7 +3523,7 @@ def get_discretized_value(value, disc_int, build_threshold=0.3):
     return add + discrete
 
 
-def get_grid_investments(n, costs, region, dg_cost_factor=1.0, length_factor=1.0):
+def get_grid_investments(n, costs, region, length_factor=1.0):
     # TODO gap between years should be read from config
     # TODO Discretization units should be read from config
     var = pd.Series()
@@ -3594,7 +3604,6 @@ def get_grid_investments(n, costs, region, dg_cost_factor=1.0, length_factor=1.0
     dg_investment = (
         dg_expansion
         * costs.at["electricity distribution grid", "investment"]
-        * dg_cost_factor
     )
     var["Investment|Energy Supply|Electricity|Distribution"] = dg_investment / 5
 
@@ -3683,10 +3692,13 @@ def get_policy(n, investment_year):
         co2_price_add_on = snakemake.params.co2_price_add_on_fossils[investment_year]
     else:
         co2_price_add_on = 0.0
-
+    try: 
+        co2_limit_de = n.global_constraints.loc["co2_limit-DE", "mu"]
+    except KeyError:
+        co2_limit_de = 0
     var["Price|Carbon"] = (
         -n.global_constraints.loc["CO2Limit", "mu"]
-        - n.global_constraints.loc["co2_limit-DE", "mu"]
+        - co2_limit_de
         + co2_price_add_on
     )
 
@@ -3696,9 +3708,7 @@ def get_policy(n, investment_year):
 
     # Price|Carbon|EU-wide Regulation Non-ETS
 
-    var["Price|Carbon|National Climate Target"] = -n.global_constraints.loc[
-        "co2_limit-DE", "mu"
-    ]
+    var["Price|Carbon|National Climate Target"] = -co2_limit_de
 
     # Price|Carbon|National Climate Target Non-ETS
 
@@ -3811,6 +3821,47 @@ def get_trade(n, region):
     #     exports_oil_renew * MWh2PJ
 
     # Trade|Secondary Energy|Gases|Hydrogen|Volume
+
+    renewable_gas_supply = (
+        n.statistics.supply(bus_carrier="renewable gas", **kwargs)
+        .groupby(["bus", "carrier"])
+        .sum()
+    )
+
+    DE_renewable_gas = renewable_gas_supply.get("DE renewable gas", pd.Series(0))
+    EU_renewable_gas = renewable_gas_supply.get("EU renewable gas", pd.Series(0))
+
+    if DE_renewable_gas.sum() == 0:
+        DE_bio_fraction = 0
+    else:
+        DE_bio_fraction = DE_renewable_gas.filter(like="biogas to gas").sum() / DE_renewable_gas.sum()
+
+    if EU_renewable_gas.sum() == 0:
+        EU_bio_fraction = 0
+    else:
+        EU_bio_fraction = EU_renewable_gas.filter(like="biogas to gas").sum() / EU_renewable_gas.sum()
+
+    assert region == "DE" # only DE is implemented at the moment
+
+    exports_gas_renew, imports_gas_renew = get_export_import_links(
+        n, region, ["renewable gas"]
+    )
+    var["Trade|Secondary Energy|Gases|Hydrogen|Volume"] = (
+        exports_gas_renew * (1 - DE_bio_fraction) 
+        - imports_gas_renew * (1 - EU_bio_fraction)
+    ) * MWh2PJ
+    var["Trade|Secondary Energy|Gases|Hydrogen|Gross Import|Volume"] = (
+        imports_gas_renew * (1 - EU_bio_fraction) * MWh2PJ
+    )
+
+    var["Trade|Secondary Energy|Gases|Biomass|Volume"] = (
+        exports_gas_renew * DE_bio_fraction
+        - imports_gas_renew * EU_bio_fraction
+    ) * MWh2PJ
+    var["Trade|Secondary Energy|Gases|Biomass|Gross Import|Volume"] = (
+        imports_gas_renew * EU_bio_fraction * MWh2PJ
+    )
+
 
     # TODO add methanol trade, renewable gas trade
 
@@ -4014,7 +4065,6 @@ def get_ariadne_var(
                 n,
                 costs,
                 region,
-                dg_cost_factor=snakemake.params.dg_cost_factor,
                 length_factor=snakemake.params.length_factor,
             ),
             get_policy(n, year),
@@ -4183,7 +4233,6 @@ if __name__ == "__main__":
         region = "DE"
         cap_func = n.statistics.optimal_capacity
         cap_string = "Optimal Capacity|"
-        dg_cost_factor = snakemake.params.dg_cost_factor
         kwargs = {
             "groupby": n.statistics.groupers.get_bus_and_carrier,
             "at_port": True,
@@ -4235,7 +4284,7 @@ if __name__ == "__main__":
     df["Model"] = "PyPSA-Eur v0.10"
 
     with pd.ExcelWriter(snakemake.output.exported_variables_full) as writer:
-        df.to_excel(writer, sheet_name="data", index=False)
+        df.round(5).to_excel(writer, sheet_name="data", index=False)
 
     print(
         "Dropping variables which are not in the template:",
@@ -4255,5 +4304,5 @@ if __name__ == "__main__":
     )
 
     with pd.ExcelWriter(snakemake.output.exported_variables) as writer:
-        df.to_excel(writer, sheet_name="data", index=False)
+        df.round(5).to_excel(writer, sheet_name="data", index=False)
         meta.to_frame().T.to_excel(writer, sheet_name="meta", index=False)
